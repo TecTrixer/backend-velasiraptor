@@ -12,89 +12,115 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-const express = require("express");
-const pinoHttp = require("./utils/logging");
-
-const app = express();
-// const fs = require('fs')
-
+const express = require('express');
+const { pinoHttp, logger } = require('./utils/logging');
+const bodyParser = require('body-parser');
+const cors = require('cors');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 const uri = "mongodb+srv://Hack-ZRH:H%40ck-2O22%21@nft-store.4y35cqd.mongodb.net/?retryWrites=true&w=majority";
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
-client.connect(err => {
-    if (err) {
-        return console.log(err);
-    }
-    // const collection = client.db("backend").collection("nfts");
-    // let map = new Map();
-    // collection.find({}).forEach(elem => {
-    //     let minter = elem.issuer;
-    //     console.log(minter);
-    //     if (!map.has(minter)) {
-    //         map.set(minter, 1);
-    //     } else {
-    //         map.set(minter, map.get(minter) + 1);
-    //     }
-    // }).then(() => {
-    //     console.log(map);
-    //     let array = [];
-    //     for ([key, value] of map.entries()) {
-    //         array.push({ key: key, value: value });
-    //     }
-    //     array = array.sort(function(a, b) {
-    //         return (a.value > b.value) ? -1 : ((b.value > a.value) ? 1 : 0)
-    //     })
-    //     console.log(array);
+const minters = client.db("backend").collection("valid_minters");
+const nfts = client.db("backend").collection("nfts");
 
-    // });
-    // fs.readFile("/Users/constantin/dev/hackzurich/issuers.txt", "utf8", function(err, data) {
-    //     if (err) {
-    //         return console.log(err);
-    //     }
-    //     let x = data.split("\n");
-    //     for (let i = 1; i < x.length - 1; i++) {
-    //         let line = x[i];
-
-    //         if (line[0] === "{") {
-    //             continue;
-    //         }
-    //         let y = line.split(", ");
-    //         let entry = { tokenID: y[0], issuer: y[1], owner: y[2] };
-    //         let nextline = x[i + 1];
-    //         if (nextline[0] === "{") {
-    //             let adjnextline = nextline.replace(/'/g, '"');
-    //             let metadata = JSON.parse(adjnextline);
-    //             entry.metadata = metadata;
-    //             // console.log(entry);
-    //             // console.log(entry.metadata.attributes);
-    //         } else {
-    //             // console.log(entry);
-    //         }
-    //         collection.insertOne(entry).then((data) => {
-    //             console.log(data);
-    //         });
-
-    //     }
-    // })
-});
-
+const app = express();
 
 // Use request-based logger for log correlation
 app.use(pinoHttp);
+app.use(bodyParser.text({ extended: true }));
+app.use(cors());
 
 // Example endpoint
-app.get('/', async (req, res) => {
+app.get('/', async (_, res) => {
     // Use basic logger without HTTP request info
-    // logger.info({ logField: 'custom-entry', arbitraryField: 'custom-entry' }); // Example of structured logging
+    // logger.info({logField: 'custom-entry', arbitraryField: 'custom-entry'}); // Example of structured logging
     // Use request-based logger with log correlation
-    console.log(req.body.txt);
     // req.log.info('Child logger with trace Id.'); // https://cloud.google.com/run/docs/logging#correlate-logs
-    res.send('Hello World!');
+    res.send('Hi, there!');
 });
 
-app.post("/search", async (req, res) => {
-    console.log(req.body);
-    res.send("LOL");
-});
+app.post('/search', async (req, res) => {
+    let search = req.body;
+    logger.info(search);
+    let response = { "err": "Not implemented yet" };
+    isUrl(search).then(async () => {
+        let tokenID = getTokenId(search);
+        response = await validateNFT(tokenID);
+    }).catch(async (_) => {
+        response = await getNFTs(search);
+    }).finally(_ => {
+        res.send(response);
+    });
+})
+
+// https://sparkies.io/nft/0x948E8c6E0c9035f7372a10e10f9f71cC81341053/8172
+function isUrl(a) {
+    if (a.slice(0, 5) === "https") {
+        return new Promise((resolve, _) => {
+            resolve();
+        });
+    } else {
+        return new Promise((_, reject) => {
+            reject();
+        });
+    }
+}
+
+function getTokenId(a) {
+    logger.info(a);
+    let split = a.split("/");
+    return split[5];
+}
+
+async function validateNFT(tokenId) {
+    let res = { "err": "Wrong URL" };
+    try {
+        let elem = await nfts.findOne({ tokenID: tokenId });
+        let issuer = elem.issuer;
+        try {
+            let cert = await minters.findOne({ key: issuer });
+            console.log(cert);
+            elem.valid = true;
+            elem.creator = cert.value;
+        } catch (_) {
+            elem.valid = false;
+        }
+        res = elem;
+    } catch (e) {
+        console.log(e);
+    }
+    console.log(res);
+    return res;
+}
+
+async function getNFTs(search) {
+    let res = { "err": "Could not do a full text search" };
+    try {
+        let find = nfts.aggregate([
+            {
+                '$search': {
+                    'index': 'fulltextindex',
+                    'text': {
+                        'query': search,
+                        'path': {
+                            'wildcard': '*'
+                        }
+                    }
+                }
+            }
+        ]);
+        let limit = find.limit(30);
+        let list = await limit.toArray();
+        let resarr = [];
+        for (let nft of list) {
+            resarr.push(await validateNFT(nft.tokenID));
+        }
+        res = resarr;
+    } catch (e) {
+        console.log(e);
+        logger.info(e);
+    } finally {
+        return res;
+    }
+}
 
 module.exports = app;

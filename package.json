@@ -11,20 +11,22 @@
     "dev": "NODE_ENV=development nodemon index.js | pino-pretty",
     "lint": "eslint --ext *.js --ext test/*.js",
     "fix": "eslint --fix --ext *.js --ext test/*.js",
-    "build": "gcloud builds submit --pack image=us-central1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/samples/microservice-template:manual",
-    "deploy": "gcloud run deploy microservice-template --image us-central1-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/samples/microservice-template:manual --platform managed --region us-central1",
+    "build": "gcloud builds submit --pack image=$REGION-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/$REPO/microservice-template:manual",
+    "deploy": "gcloud run deploy microservice-template --image $REGION-docker.pkg.dev/$GOOGLE_CLOUD_PROJECT/$REPO/microservice-template:manual --platform managed --region $REGION",
     "test": "mocha test/app.test.js --check-leaks",
     "system-test": "mocha test/system.test.js --timeout=180000"
   },
   "author": "Google LLC",
   "license": "Apache-2.0",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.18.1",
     "gcp-metadata": "^5.0.0",
     "google-auth-library": "^8.0.0",
     "mongodb": "^4.9.1",
     "pino": "^8.0.0",
-    "pino-http": "^8.0.0"
+    "pino-http": "^8.0.0",
+    "pino-pretty": "^9.1.0"
   },
   "devDependencies": {
     "eslint": "^8.0.0",
